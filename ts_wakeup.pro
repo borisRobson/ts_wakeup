@@ -4,7 +4,7 @@
 #
 #-------------------------------------------------
 
-QT       += core
+QT       += core network
 
 TARGET = ts_wakeup
 TEMPLATE = app

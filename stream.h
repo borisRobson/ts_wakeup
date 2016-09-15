@@ -9,6 +9,7 @@
 #include <vector>
 #include <QThread>
 #include <string>
+#include <QtNetwork>
 
 #include "gst/gst.h"
 #include "gst/app/gstappsink.h"
@@ -27,6 +28,12 @@ public:
     stream();
     bool buildpipeline();
     void startstream();
+    void sendPanelMessage();
+public slots:
+    void notifyPanel();
+signals:
+    void notify();
+
 
 };
 
@@ -48,7 +55,7 @@ class imgThread : public QThread
 public:
     imgThread();
     void run();
-    double compareImages(Mat ref, Mat comp);
+    double compareImages(Mat& ref, Mat& comp);
 
 };
 

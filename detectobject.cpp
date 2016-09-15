@@ -81,7 +81,7 @@ void detectobject::detectlargestobject(Mat &image, CascadeClassifier &cascade, v
     */
     Size minFeatureSize = Size(10,10);
     float searchScaleFactor = 1.1f;
-    int minNeighbours = 3;
+    int minNeighbours = 2;
 
     Mat dst;
     image.copyTo(dst);

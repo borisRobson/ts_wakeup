@@ -29,7 +29,7 @@ void Task::run()
 
     qDebug() << __FUNCTION__;
 
-    //build and run the pipeline
+   //build and run the pipeline
     strm = new stream();
 
     //create and link pipeline elements

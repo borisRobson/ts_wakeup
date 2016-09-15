@@ -20,18 +20,23 @@ GstElement *fsink;
 background_detect *bg_detect;
 detectobject *detect;
 imgThread *imgthread;
+stream *this_stream;
 
 gboolean compareImg;
 GstBuffer *temp;
 int fcount, diff_count, face_count;
 MatND ref, comp;
-
+QUdpSocket *socket;
 
 stream::stream()
 {
     bg_detect = new background_detect();
     detect = new detectobject();
     imgthread = new imgThread();
+    this_stream = this;
+    socket = new QUdpSocket(this);
+    QHostAddress *addr = new QHostAddress("127.0.0.1");
+    socket->connectToHost(*addr, 8888);
 }
 
 
@@ -205,10 +210,12 @@ GstFlowReturn new_preroll(GstAppSink *asink, gpointer user_data)
 
 GstFlowReturn new_buffer(GstAppSink *asink, gpointer data)
 {
+
     fcount++;
     Q_UNUSED(data);
     //GstBufferCopyFlags copyflags = GST_BUFFER_COPY_ALL;
     GstBuffer *buffer;
+
 
     //discard initial buffers
     if(fcount < 10){
@@ -254,8 +261,7 @@ GstFlowReturn new_buffer(GstAppSink *asink, gpointer data)
 
     }
 
-    else if(compareImg == true){
-        qDebug() << "comparing ";
+    else if(compareImg == true){        
         compareImg = false;
         gst_app_sink_set_emit_signals((GstAppSink*)appsink, false);
         QTime t;
@@ -274,7 +280,7 @@ GstFlowReturn new_buffer(GstAppSink *asink, gpointer data)
         double comparison = imgthread->compareImages(ref,frame2);
 
         int time = t.elapsed();
-        cout << "imgthread time: " << time << endl;
+        //cout << "imgthread time: " << time << endl;
 
         if(comparison < 1.0f){
             Mat face = detect->findFace(frame2);
@@ -287,13 +293,16 @@ GstFlowReturn new_buffer(GstAppSink *asink, gpointer data)
 #else
                 sprintf(file, "face%d.png", face_count);
 #endif
-                imwrite(file, face, compression_params);
+               // imwrite(file, face, compression_params);
                 delete [] file;
-                qDebug() << "***Person Detected***";
+               // qDebug() << "***Person Detected***";
+
+                this_stream->sendPanelMessage();
+
             }
         }
 
-        cout << "detection time: " << t.elapsed() - time <<  " ms" << endl;
+        //cout << "detection time: " << t.elapsed() - time <<  " ms" << endl;
 
         cout << "time elapsed: " << t.elapsed() << " ms" << endl;
 
@@ -329,8 +338,25 @@ void imgThread::run()
 
 }
 
-double imgThread::compareImages(Mat ref, Mat comp)
+double imgThread::compareImages(Mat& ref, Mat& comp)
 {
-    double comparison =  bg_detect->compareImages(ref, comp);
+    Mat new_ref, new_comp;
+    ref.copyTo(new_ref);
+    comp.copyTo(new_comp);
+    double comparison =  bg_detect->compareImages(new_ref, new_comp);
     return comparison;
+}
+
+void stream::sendPanelMessage()
+{
+
+    QByteArray arr = (QByteArray)"timeofflight";
+    socket->write(arr);
+    cout << (string)arr << endl;
+
+}
+
+void stream::notifyPanel()
+{
+
 }

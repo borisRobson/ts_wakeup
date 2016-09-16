@@ -29,10 +29,8 @@ public:
     bool buildpipeline();
     void startstream();
     void sendPanelMessage();
-public slots:
-    void notifyPanel();
-signals:
-    void notify();
+    void exit();
+
 
 
 };

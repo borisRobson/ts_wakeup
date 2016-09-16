@@ -5,17 +5,15 @@
 using namespace cv;
 using namespace std;
 
+//gstreamer function prototypes
 gboolean bus_cb(GstBus *bus, GstMessage *msg, gpointer user_data);
 GstFlowReturn new_preroll(GstAppSink *asink, gpointer user_data);
 GstFlowReturn new_buffer(GstAppSink *asink, gpointer user_data);
-gboolean timeout_cb(gpointer user_data);
 
+//gst elements
 GstElement *input_pipe;
-GstElement *output_pipe;
 GMainLoop *loop;
 GstElement *appsink;
-GstElement *appsrc;
-GstElement *fsink;
 
 background_detect *bg_detect;
 detectobject *detect;
@@ -24,7 +22,7 @@ stream *this_stream;
 
 gboolean compareImg;
 GstBuffer *temp;
-int fcount, diff_count, face_count;
+int fcount;
 MatND ref, comp;
 QUdpSocket *socket;
 
@@ -53,16 +51,13 @@ bool stream::buildpipeline()
     GstElement *rgbfilter;
     GstElement *rgb_conv;
 
-    GstElement *enc;
-
-    fcount = diff_count = face_count = 0;
-
+    //initialise count to 0
+    fcount = 0;
+    //ensure initialised to false
     compareImg = false;
 
     //create elements
     input_pipe = gst_pipeline_new("input-pipe");
-    output_pipe = gst_pipeline_new("output-pipe");
-
 #ifdef IMX6
     src = gst_element_factory_make("mfw_v4lsrc", NULL);
 #else
@@ -75,57 +70,34 @@ bool stream::buildpipeline()
     rgb_conv = gst_element_factory_make("ffmpegcolorspace", NULL);
     appsink = gst_element_factory_make("appsink", NULL);
 
-    appsrc = gst_element_factory_make("appsrc", NULL);
-#ifdef IMX6
-    enc = gst_element_factory_make("vpuenc", NULL);
-#else
-    enc = gst_element_factory_make("jpegenc", NULL);
-#endif
-    fsink = gst_element_factory_make("fakesink", NULL);
 
     //confirm elements created
     if(!src || !scale || !yuvfilter || !yuv_conv || !rgbfilter || !rgb_conv || !appsink){
         g_printerr("could not create all input elements\n");
         gst_object_unref(input_pipe);
-        gst_object_unref(output_pipe);
+
         return false;
     }
 
-    if(!appsrc || !enc || !fsink){
-        g_printerr("could not create all output elements\n");
-        gst_object_unref(input_pipe);
-        gst_object_unref(output_pipe);
-        return false;
-    }
 #ifdef IMX6
     g_object_set(src, "capture-mode", 1, NULL);
 #endif
 
     //set filter caps
-    //gst_util_set_object_arg(G_OBJECT(yuvfilter), "caps",
-    //                        "video/x-raw-yuv,width=640,height=480");
     gst_util_set_object_arg(G_OBJECT(yuvfilter), "caps",
                             "video/x-raw-yuv,width=320,height=240");
     gst_util_set_object_arg(G_OBJECT(rgbfilter), "caps",
                             "video/x-raw-rgb");
-   // g_object_set(fsink, "location", "cap%d.jpg", NULL);
 
     //add elements to pipelines
     gst_bin_add_many(GST_BIN(input_pipe), src, scale, yuvfilter, yuv_conv, rgbfilter, rgb_conv, appsink, NULL);
-    gst_bin_add_many(GST_BIN(output_pipe), appsrc, enc, fsink, NULL);
+
 
     //link elements
     if(!gst_element_link_many(src, scale, yuvfilter, yuv_conv, rgbfilter, rgb_conv, appsink, NULL)){
         g_printerr("could not link all input elements\n");
         gst_object_unref(input_pipe);
-        gst_object_unref(output_pipe);
-        return false;
-    }
 
-    if(!gst_element_link_many(appsrc, enc, fsink, NULL)){
-        g_printerr("could not link all output elements\n");
-        gst_object_unref(input_pipe);
-        gst_object_unref(output_pipe);
         return false;
     }
 
@@ -136,18 +108,11 @@ bool stream::buildpipeline()
     GstAppSinkCallbacks callbacks = {NULL, new_preroll, new_buffer, NULL};
     gst_app_sink_set_callbacks((GstAppSink*)appsink, &callbacks, NULL, NULL);
 
-    //connect the appsrc buffer signal,
-    //set to false initially to prevent it requesting data before we are ready
-    gst_app_src_set_emit_signals ((GstAppSrc*)appsrc, false);
-   // g_signal_connect(appsrc, "need-data", G_CALLBACK(cb_need_data), NULL);
-
     //link bus callback
     gst_bus_add_watch(GST_ELEMENT_BUS(input_pipe), bus_cb, loop);
-    gst_bus_add_watch(GST_ELEMENT_BUS(output_pipe), bus_cb, loop);
 
     //set to PAUSED so that all elements are prepared for data flow
     gst_element_set_state(input_pipe, GST_STATE_PAUSED);
-    //gst_element_set_state(output_pipe, GST_STATE_PAUSED);
 
     return true;
 }
@@ -182,12 +147,8 @@ gboolean bus_cb(GstBus *bus, GstMessage *msg, gpointer user_data)
             GstState old_state, pending_state, new_state;
             gst_message_parse_state_changed(msg, &old_state, &new_state, &pending_state);
             //if message from either pipeline, display state change
-            if(GST_OBJECT_NAME(msg->src) == GST_OBJECT_NAME(input_pipe) ||GST_OBJECT_NAME(msg->src) == GST_OBJECT_NAME(output_pipe) ){
-                g_print("'%s' state changed from %s to %s. \n", GST_OBJECT_NAME(msg->src), gst_element_state_get_name(old_state), gst_element_state_get_name(new_state));
-                //if input pipeline is now 'PLAYING' set warped pipeline to 'PLAYING'
-                if(GST_OBJECT_NAME(msg->src) == GST_OBJECT_NAME(input_pipe) && new_state == GST_STATE_PLAYING){
-                    //gst_element_set_state(input_pipe, GST_STATE_PLAYING);
-                }
+            if(GST_OBJECT_NAME(msg->src) == GST_OBJECT_NAME(input_pipe)  ){
+                g_print("'%s' state changed from %s to %s. \n", GST_OBJECT_NAME(msg->src), gst_element_state_get_name(old_state), gst_element_state_get_name(new_state)); 
             }
             break;
         }
@@ -203,7 +164,6 @@ GstFlowReturn new_preroll(GstAppSink *asink, gpointer user_data)
     Q_UNUSED(asink);
     Q_UNUSED(user_data);
     g_print("got preroll\n");
-    //g_timeout_add(250, timeout_cb, loop);
     compareImg = false;
     return GST_FLOW_OK;
 }
@@ -213,7 +173,6 @@ GstFlowReturn new_buffer(GstAppSink *asink, gpointer data)
 
     fcount++;
     Q_UNUSED(data);
-    //GstBufferCopyFlags copyflags = GST_BUFFER_COPY_ALL;
     GstBuffer *buffer;
 
 
@@ -221,14 +180,6 @@ GstFlowReturn new_buffer(GstAppSink *asink, gpointer data)
     if(fcount < 10){
         return GST_FLOW_OK;
     }
-
-    //set emit signals to false whilst processing
-    //gst_app_sink_set_emit_signals((GstAppSink*)appsink, false);
-
-    vector<int>compression_params;
-    compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
-    compression_params.push_back(9);
-
 
     if(fcount == 10){
         //grab available buffer
@@ -241,15 +192,6 @@ GstFlowReturn new_buffer(GstAppSink *asink, gpointer data)
         Mat frame2;
         //gstreamer buffer is rgb, opencv wants bgr.
         cvtColor(frame, frame2,CV_RGB2BGR);
-
-        char* file = new char[1024];
-    #ifdef IMX6
-        sprintf(file, "/nvdata/tftpboot/ref%d.png", fcount);
-    #else
-        sprintf(file, "ref%d.png", fcount);
-    #endif
-        imwrite(file, frame2, compression_params);
-        delete [] file;
 
         ref = frame2;
 
@@ -279,30 +221,16 @@ GstFlowReturn new_buffer(GstAppSink *asink, gpointer data)
 
         double comparison = imgthread->compareImages(ref,frame2);
 
-        int time = t.elapsed();
-        //cout << "imgthread time: " << time << endl;
-
         if(comparison < 1.0f){
             Mat face = detect->findFace(frame2);
             if(!face.empty()){
-                face_count++;
-
-                char* file = new char[1024];
-#ifdef IMX6
-                sprintf(file, "/nvdata/tftpboot/face%d.png", face_count);
-#else
-                sprintf(file, "face%d.png", face_count);
-#endif
-               // imwrite(file, face, compression_params);
-                delete [] file;
-               // qDebug() << "***Person Detected***";
-
+                qDebug() << "***Person Detected***";
                 this_stream->sendPanelMessage();
-
+                compareImg = false;
+                g_main_loop_quit(loop);
+                return GST_FLOW_OK;
             }
-        }
-
-        //cout << "detection time: " << t.elapsed() - time <<  " ms" << endl;
+        }        
 
         cout << "time elapsed: " << t.elapsed() << " ms" << endl;
 
@@ -311,7 +239,6 @@ GstFlowReturn new_buffer(GstAppSink *asink, gpointer data)
         gst_buffer_unref(buffer);
 
         gst_app_sink_set_emit_signals((GstAppSink*)appsink, true);
-
     }
 
     return GST_FLOW_OK;
@@ -349,14 +276,15 @@ double imgThread::compareImages(Mat& ref, Mat& comp)
 
 void stream::sendPanelMessage()
 {
-
-    QByteArray arr = (QByteArray)"timeofflight";
+    qDebug() << __FUNCTION__;
+    QByteArray arr = (QByteArray)"camerawakeup";
     socket->write(arr);
-    cout << (string)arr << endl;
-
 }
 
-void stream::notifyPanel()
+void stream::exit()
 {
-
+    if(g_main_loop_is_running(loop)){
+        g_main_loop_quit(loop);
+    }
 }
+

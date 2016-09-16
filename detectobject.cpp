@@ -8,7 +8,12 @@ CascadeClassifier faceCascade;
 detectobject::detectobject()
 {
     //init cascades
+#ifdef IMX6
+    const char* faceCascadeFilename = "/paxton_apps/ts_wakeup/cascades/lbpcascade_frontalface.xml";
+#else
     const char* faceCascadeFilename = "./cascades/lbpcascade_frontalface.xml";
+#endif
+
 
 
     faceCascade.load(faceCascadeFilename);
@@ -79,9 +84,9 @@ void detectobject::detectlargestobject(Mat &image, CascadeClassifier &cascade, v
         -search detail
         -false detection threshold
     */
-    Size minFeatureSize = Size(10,10);
-    float searchScaleFactor = 1.1f;
-    int minNeighbours = 2;
+    Size minFeatureSize = Size(30,30);
+    float searchScaleFactor = 1.2f;
+    int minNeighbours = 3;
 
     Mat dst;
     image.copyTo(dst);

@@ -14,6 +14,12 @@ int main(int argc, char *argv[])
 
     QObject::connect(task, SIGNAL(finished()), &app, SLOT(quit()));
 
+    //build and run the pipeline
+     strm = new stream();
+
+     QObject::connect(&app, SIGNAL(aboutToQuit()), strm, SLOT(exit()));
+
+
     //init gstreamer
     if(!gst_is_initialized())
         gst_init(&argc,&argv);
@@ -30,8 +36,6 @@ void Task::run()
 
     qDebug() << __FUNCTION__;
 
-   //build and run the pipeline
-    strm = new stream();
 
     //create and link pipeline elements
     pipeBuilt = strm->buildpipeline();

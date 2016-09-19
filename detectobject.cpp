@@ -30,7 +30,6 @@ detectobject::detectobject()
 Mat detectobject::findFace(Mat &image)
 {    
     //convert image to greyscale
-    //Mat grey(Size(640,480),CV_8UC1);
     Mat grey(Size(320,240),CV_8UC1);
     //detect channels and apply appropriate conversion
     if(image.channels() == 3){
@@ -62,8 +61,6 @@ Mat detectobject::findFace(Mat &image)
     if (faceRect.width > 0){
         //return face
         Mat face = grey(faceRect);
-        //int detectWidth = 200;
-        //resize(face,face,Size(detectWidth,detectWidth));
         return face;
     }else{
         //return empty Mat
@@ -74,7 +71,7 @@ Mat detectobject::findFace(Mat &image)
 
 void detectobject::detectlargestobject(Mat &image, CascadeClassifier &cascade, vector<Rect> &objects)
 {
-    bool scaled = false;
+    //bool scaled = false;
     //set flags for single object detection
     int flags = CASCADE_FIND_BIGGEST_OBJECT;
 
@@ -91,15 +88,18 @@ void detectobject::detectlargestobject(Mat &image, CascadeClassifier &cascade, v
     Mat dst;
     image.copyTo(dst);
 
+    /*
     //resize large image for faster processing time
     if(dst.cols > 400){
         resize(dst, dst, Size(), 0.5, 0.5);
         scaled = true;
     }
+    */
 
     //opencv obj detect function
     cascade.detectMultiScale(dst,objects,searchScaleFactor,minNeighbours, flags, minFeatureSize);
 
+    /*
     //resize if scaled
     if(scaled){
         for(uint i = 0; i < objects.size(); i++){
@@ -109,6 +109,7 @@ void detectobject::detectlargestobject(Mat &image, CascadeClassifier &cascade, v
             objects[i].height = cvRound(objects[i].height * 2);
         }
     }
+    */
     return;
 }
 

@@ -12,7 +12,7 @@ TEMPLATE = app
 
 PROJECT_BASE_DIRECTORY = /home/standby/doorentry
 
-QMAKE_CXXFLAGS-=-Wno-missing-field-intializers
+#QMAKE_CXXFLAGS += -Wnomissing-field-intializers
 #
 # Setup paths according to target spec.
 #

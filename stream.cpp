@@ -123,6 +123,10 @@ void stream::startstream()
 
     imgthread->run();
     g_main_loop_run(loop);
+
+    qDebug() << "unreffing";
+    gst_element_set_state(input_pipe, GST_STATE_NULL);
+    gst_object_unref(input_pipe);
 }
 
 gboolean bus_cb(GstBus *bus, GstMessage *msg, gpointer user_data)
@@ -170,11 +174,9 @@ GstFlowReturn new_preroll(GstAppSink *asink, gpointer user_data)
 
 GstFlowReturn new_buffer(GstAppSink *asink, gpointer data)
 {
-
     fcount++;
     Q_UNUSED(data);
     GstBuffer *buffer;
-
 
     //discard initial buffers
     if(fcount < 10){
@@ -186,7 +188,6 @@ GstFlowReturn new_buffer(GstAppSink *asink, gpointer data)
         buffer =  gst_app_sink_pull_buffer(asink);
 
         //convert GstBuffer to Mat
-        //Mat frame(Size(640,480), CV_8UC3, (char*)GST_BUFFER_DATA(buffer), Mat::AUTO_STEP);
         Mat frame(Size(320,240), CV_8UC3, (char*)GST_BUFFER_DATA(buffer), Mat::AUTO_STEP);
 
         Mat frame2;
@@ -200,7 +201,6 @@ GstFlowReturn new_buffer(GstAppSink *asink, gpointer data)
         compareImg = true;
 
         return GST_FLOW_OK;
-
     }
 
     else if(compareImg == true){        
@@ -212,7 +212,6 @@ GstFlowReturn new_buffer(GstAppSink *asink, gpointer data)
         buffer =  gst_app_sink_pull_buffer(asink);
 
         //convert GstBuffer to Mat
-        //Mat frame(Size(640,480), CV_8UC3, (char*)GST_BUFFER_DATA(buffer), Mat::AUTO_STEP);
         Mat frame(Size(320,240), CV_8UC3, (char*)GST_BUFFER_DATA(buffer), Mat::AUTO_STEP);
 
         Mat frame2;
@@ -283,6 +282,7 @@ void stream::sendPanelMessage()
 
 void stream::exit()
 {
+    qDebug() << "exit";
     if(g_main_loop_is_running(loop)){
         g_main_loop_quit(loop);
     }

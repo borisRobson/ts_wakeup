@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<Settings>
+<param Name="size">small</param>
+<param Name="minFeature">15</param>
+<param Name="minNeighbours">2</param>
+<param Name="scaleFactor" >1250</param>
+</Settings>

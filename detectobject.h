@@ -21,6 +21,7 @@ public:
     Mat findFace(Mat& image);
     void detectlargestobject(Mat& image, CascadeClassifier &cascade, vector<Rect> &objects);
     QString getvalues(QDomElement root, QString tagname, QString attribute, QString valname);
+    QDomDocument loadsettings(QString filename);
 };
 
 #endif // DETECTOBJECT_H

@@ -4,6 +4,7 @@ using namespace cv;
 using namespace std;
 
 CascadeClassifier faceCascade;
+QDomDocument doc;
 
 detectobject::detectobject()
 {
@@ -13,9 +14,6 @@ detectobject::detectobject()
 #else
     const char* faceCascadeFilename = "./cascades/lbpcascade_frontalface.xml";
 #endif
-
-
-
     faceCascade.load(faceCascadeFilename);
 
     if(faceCascade.empty()){
@@ -25,6 +23,7 @@ detectobject::detectobject()
     }else{
         qDebug() << "cascades loaded";
     }
+    doc = loadsettings("/nvdata/tftpboot/settings.xml");
 }
 
 Mat detectobject::findFace(Mat &image)
@@ -68,8 +67,10 @@ Mat detectobject::findFace(Mat &image)
     if (faceRect.width > 0){
         //return face
         Mat face = grey(faceRect);
+        grey.release();
         return face;
     }else{
+        grey.release();
         //return empty Mat
         qDebug() << " no face found";
         return Mat();
@@ -81,20 +82,6 @@ void detectobject::detectlargestobject(Mat &image, CascadeClassifier &cascade, v
     //set flags for single object detection
     int flags = CASCADE_FIND_BIGGEST_OBJECT;
 
-    QDomDocument document;
-    QFile file("/nvdata/tftpboot/settings.xml");
-    if(!file.open(QIODevice::ReadOnly | QIODevice::Text)){
-        qDebug() << "Could not open file";
-
-    }
-    else{
-        if(!document.setContent(&file)){
-            qDebug() << "Could not open file";
-
-        }
-        file.close();
-    }
-
     /*
         set detection parameters:
         -minimum object size
@@ -102,8 +89,7 @@ void detectobject::detectlargestobject(Mat &image, CascadeClassifier &cascade, v
         -detection threshold - (1 - 6) - low is less strict
     */
 
-    QDomElement root = document.firstChildElement();
-
+    QDomElement root = doc.firstChildElement();
     QString str = getvalues(root, "param",  "Name", "minNeighbours");
     int minNeighbours = str.toInt();
 
@@ -120,8 +106,49 @@ void detectobject::detectlargestobject(Mat &image, CascadeClassifier &cascade, v
     //opencv obj detect function
     cascade.detectMultiScale(dst,objects,searchScaleFactor,minNeighbours, flags, minFeatureSize);
 
+    dst.release();
+
     return;
 }
+
+QDomDocument detectobject::loadsettings(QString filename)
+{
+    /*
+     *Try to load /nvdata file, this could be lost if system
+     * has rebooted. This is for test only,
+     *once values are decided xml files can be kept in
+     *permanent storage
+     */
+    QDomDocument document;
+    QFile file(filename);
+    if(!file.open(QIODevice::ReadOnly | QIODevice::Text)){
+        qDebug() << "Could not open file,using default";
+        goto usedefault;
+    }
+    else{
+        if(!document.setContent(&file)){
+            qDebug() << "Could not open file";
+        }
+        file.close();
+    }
+    return document;
+
+usedefault:
+    QFile defFile("./default.xml");
+    if(!defFile.open(QIODevice::ReadOnly | QIODevice::Text)){
+        qDebug() << "Could not open default";
+        goto usedefault;
+    }
+    else{
+        if(!document.setContent(&defFile)){
+            qDebug() << "Could not open file";
+        }
+        defFile.close();
+    }
+    return document;
+
+}
+
 
 QString detectobject::getvalues(QDomElement root, QString tagname, QString attribute, QString valname)
 {

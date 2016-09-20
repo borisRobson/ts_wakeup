@@ -17,10 +17,9 @@ GstElement *appsink;
 detectobject *detect;
 stream *this_stream;
 
-gboolean compareImg;
 int fcount;
 QUdpSocket *socket;
-QDomDocument document;
+QDomDocument settingsdoc;
 
 static int START_THRESH = 3;
 
@@ -32,18 +31,8 @@ stream::stream()
     QHostAddress *addr = new QHostAddress("127.0.0.1");
     socket->connectToHost(*addr, 8888);
 
-    QFile file("/nvdata/tftpboot/settings.xml");
-    if(!file.open(QIODevice::ReadOnly | QIODevice::Text)){
-        qDebug() << "Could not open file";
-
-    }
-    else{
-        if(!document.setContent(&file)){
-            qDebug() << "Could not read file";
-
-        }
-        file.close();
-    }
+    //load xml file for object detection settings
+    settingsdoc = detect->loadsettings("/nvdata/tftpboot/settings.xml");
 }
 
 
@@ -62,8 +51,6 @@ bool stream::buildpipeline()
 
     //initialise count to 0
     fcount = 0;
-    //ensure initialised to false
-    compareImg = false;
 
     //create elements
     input_pipe = gst_pipeline_new("input-pipe");
@@ -87,7 +74,7 @@ bool stream::buildpipeline()
         return false;
     }
 
-    QDomElement root = document.firstChildElement();
+    QDomElement root = settingsdoc.firstChildElement();
     QString str = detect->getvalues(root, "param",  "Name", "size");
 
 #ifdef IMX6
@@ -190,8 +177,7 @@ GstFlowReturn new_preroll(GstAppSink *asink, gpointer user_data)
 {
     Q_UNUSED(asink);
     Q_UNUSED(user_data);
-    g_print("got preroll\n");
-    compareImg = true;
+    g_print("got preroll\n");    
     return GST_FLOW_OK;
 }
 
@@ -201,13 +187,16 @@ GstFlowReturn new_buffer(GstAppSink *asink, gpointer data)
     Q_UNUSED(data);
     GstBuffer *buffer;
 
+    qDebug() << __FUNCTION__;
     //discard initial buffers
     if(fcount < START_THRESH){
         return GST_FLOW_OK;
     }
+    //set to false whilst processing image
+    gst_app_sink_set_emit_signals((GstAppSink*)appsink, false);
 
     Size img_size;
-    QDomElement root = document.firstChildElement();
+    QDomElement root = settingsdoc.firstChildElement();
     QString str = detect->getvalues(root, "param",  "Name", "size");
 
     if(str == (QString)"large"){
@@ -216,38 +205,47 @@ GstFlowReturn new_buffer(GstAppSink *asink, gpointer data)
         img_size = Size(320,240);
     }
 
-    if(compareImg == true){
-        compareImg = false;
-        gst_app_sink_set_emit_signals((GstAppSink*)appsink, false);
-        QTime t;
-        t.start();
-        //grab available buffer
-        buffer =  gst_app_sink_pull_buffer(asink);
+    qDebug() << "processing";
+    QTime t;
+    t.start();
+    //grab available buffer
+    buffer =  gst_app_sink_pull_buffer(asink);
 
-        //convert GstBuffer to Mat
-        Mat frame(img_size, CV_8UC3, (char*)GST_BUFFER_DATA(buffer), Mat::AUTO_STEP);
+    //convert GstBuffer to Mat
+    Mat frame(img_size, CV_8UC3, (char*)GST_BUFFER_DATA(buffer), Mat::AUTO_STEP);
 
-        Mat frame2;
-        //gstreamer buffer is rgb, opencv wants bgr.
-        cvtColor(frame, frame2,CV_RGB2BGR);
+    Mat frame2;
+    //gstreamer buffer is rgb, opencv wants bgr.
+    cvtColor(frame, frame2,CV_RGB2BGR);
 
-        Mat face = detect->findFace(frame2);
-        if(!face.empty()){
-            qDebug() << "***Person Detected***";
-            this_stream->sendPanelMessage();
-            compareImg = false;
-            g_main_loop_quit(loop);
-            return GST_FLOW_OK;
-        }
+    //perform object detection method
+    Mat face = detect->findFace(frame2);
+    if(!face.empty()){
+        qDebug() << "***Person Detected***";
+        //free memory
+        frame.release();
+        frame2.release();
+        face.release();
 
-        cout << "time elapsed: " << t.elapsed() << " ms" << endl;
+        //notify panel
+        this_stream->sendPanelMessage();
 
-        compareImg = true;
-
-        gst_buffer_unref(buffer);
-
-        gst_app_sink_set_emit_signals((GstAppSink*)appsink, true);
+        //quit program
+        g_main_loop_quit(loop);
+        return GST_FLOW_OK;
     }
+
+    cout << "time elapsed: " << t.elapsed() << " ms" << endl;
+
+    //free memory
+    gst_buffer_unref(buffer);
+    frame.release();
+    frame2.release();
+    face.release();
+
+    //havent found a face, set signals to true to get new buffer
+    gst_app_sink_set_emit_signals((GstAppSink*)appsink, true);
+
     return GST_FLOW_OK;
 }
 
@@ -255,7 +253,7 @@ gboolean timeout_cb(gpointer user_data)
 {
     Q_UNUSED(user_data);
     g_print("timeout\n");
-    compareImg = !compareImg;
+
     return true;
 }
 

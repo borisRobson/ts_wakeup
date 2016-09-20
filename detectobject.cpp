@@ -29,8 +29,15 @@ detectobject::detectobject()
 
 Mat detectobject::findFace(Mat &image)
 {    
+    Mat grey;
+    int width = image.cols;
+    if(width == 320){
+        grey = Mat(Size(320,240), CV_8UC1);
+    }else{
+        grey = Mat(Size(640,480), CV_8UC1);
+    }
     //convert image to greyscale
-    Mat grey(Size(320,240),CV_8UC1);
+
     //detect channels and apply appropriate conversion
     if(image.channels() == 3){
         cvtColor(image,grey,CV_BGR2GRAY);
@@ -70,47 +77,69 @@ Mat detectobject::findFace(Mat &image)
 }
 
 void detectobject::detectlargestobject(Mat &image, CascadeClassifier &cascade, vector<Rect> &objects)
-{
-    //bool scaled = false;
+{ 
     //set flags for single object detection
     int flags = CASCADE_FIND_BIGGEST_OBJECT;
 
+    QDomDocument document;
+    QFile file("/nvdata/tftpboot/settings.xml");
+    if(!file.open(QIODevice::ReadOnly | QIODevice::Text)){
+        qDebug() << "Could not open file";
+
+    }
+    else{
+        if(!document.setContent(&file)){
+            qDebug() << "Could not open file";
+
+        }
+        file.close();
+    }
+
     /*
         set detection parameters:
-        -min size
-        -search detail
-        -false detection threshold
+        -minimum object size
+        -image scaling
+        -detection threshold - (1 - 6) - low is less strict
     */
-    Size minFeatureSize = Size(30,30);
-    float searchScaleFactor = 1.2f;
-    int minNeighbours = 3;
+
+    QDomElement root = document.firstChildElement();
+
+    QString str = getvalues(root, "param",  "Name", "minNeighbours");
+    int minNeighbours = str.toInt();
+
+    str = getvalues(root, "param",  "Name", "scaleFactor");
+    float searchScaleFactor = ((float)(str.toInt())/1000);
+
+    str = getvalues(root, "param", "Name", "minFeature");
+    int minFeature = str.toInt();
+    Size minFeatureSize = Size(minFeature, minFeature);
 
     Mat dst;
     image.copyTo(dst);
 
-    /*
-    //resize large image for faster processing time
-    if(dst.cols > 400){
-        resize(dst, dst, Size(), 0.5, 0.5);
-        scaled = true;
-    }
-    */
-
     //opencv obj detect function
     cascade.detectMultiScale(dst,objects,searchScaleFactor,minNeighbours, flags, minFeatureSize);
 
-    /*
-    //resize if scaled
-    if(scaled){
-        for(uint i = 0; i < objects.size(); i++){
-            objects[i].x = cvRound(objects[i].x * 2);
-            objects[i].y = cvRound(objects[i].y * 2);
-            objects[i].width = cvRound(objects[i].width * 2);
-            objects[i].height = cvRound(objects[i].height * 2);
+    return;
+}
+
+QString detectobject::getvalues(QDomElement root, QString tagname, QString attribute, QString valname)
+{
+    QString val;
+    QDomNodeList items = root.elementsByTagName(tagname);
+
+    for(int i = 0; i < items.count(); i++){
+        QDomNode itemnode = items.at(i);
+
+        //convert to element
+        if(itemnode.isElement()){
+            QDomElement itemel = itemnode.toElement();
+            if(itemel.attribute(attribute) == valname){
+                val = itemel.text();
+            }
         }
     }
-    */
-    return;
+    return val;
 }
 
 

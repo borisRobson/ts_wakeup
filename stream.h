@@ -28,12 +28,9 @@ public:
     stream();
     bool buildpipeline();
     void startstream();
-    void sendPanelMessage();
+    void sendPanelMessage();    
 public slots:
     void exit();
-
-
-
 };
 
 
@@ -49,13 +46,6 @@ signals:
     void finished();
 };
 
-class imgThread : public QThread
-{
-public:
-    imgThread();
-    void run();
-    double compareImages(Mat& ref, Mat& comp);
 
-};
 
 #endif // STREAM_H

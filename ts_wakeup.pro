@@ -4,7 +4,7 @@
 #
 #-------------------------------------------------
 
-QT       += core network
+QT       += core network xml
 
 TARGET = ts_wakeup
 TEMPLATE = app
@@ -63,10 +63,8 @@ linux-g++-|linux-g++-64 {
 
 SOURCES += main.cpp \
     stream.cpp \
-    background_detect.cpp \
     detectobject.cpp
 
 HEADERS  += \
     stream.h \
-    background_detect.h \
     detectobject.h

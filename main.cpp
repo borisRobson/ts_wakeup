@@ -19,10 +19,9 @@ int main(int argc, char *argv[])
 
      QObject::connect(&app, SIGNAL(aboutToQuit()), strm, SLOT(exit()));
 
-
     //init gstreamer
     if(!gst_is_initialized())
-        gst_init(&argc,&argv);
+        gst_init(NULL,NULL);
 
     //run program
     QTimer::singleShot(10,task,SLOT(run()));

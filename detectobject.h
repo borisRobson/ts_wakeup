@@ -8,6 +8,7 @@
 #include <QtCore>
 #include <QDebug>
 #include <stdio.h>
+#include <QtXml>
 
 using namespace cv;
 using namespace std;
@@ -19,6 +20,7 @@ public:
     ~detectobject();
     Mat findFace(Mat& image);
     void detectlargestobject(Mat& image, CascadeClassifier &cascade, vector<Rect> &objects);
+    QString getvalues(QDomElement root, QString tagname, QString attribute, QString valname);
 };
 
 #endif // DETECTOBJECT_H

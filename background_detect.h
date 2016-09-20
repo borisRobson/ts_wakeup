@@ -2,12 +2,14 @@
 #define BACKGROUND_DETECT_H
 
 #include <QObject>
+#include <QtCore>
 #include <QDebug>
 #include <QTime>
 #include <QTimer>
 #include <QFile>
 #include <vector>
 #include <string>
+
 
 #include "opencv2/opencv.hpp"
 #include "opencv2/highgui/highgui.hpp"
@@ -23,6 +25,7 @@ public:
     background_detect();
     double compareImages(Mat ref, Mat comp);
     void drawThresh();
+
 };
 
 #endif // BACKGROUND_DETECT_H

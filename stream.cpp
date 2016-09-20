@@ -1,5 +1,4 @@
 #include "stream.h"
-#include "background_detect.h"
 #include "detectobject.h"
 
 using namespace cv;
@@ -15,30 +14,40 @@ GstElement *input_pipe;
 GMainLoop *loop;
 GstElement *appsink;
 
-background_detect *bg_detect;
 detectobject *detect;
-imgThread *imgthread;
 stream *this_stream;
 
 gboolean compareImg;
-GstBuffer *temp;
 int fcount;
-MatND ref, comp;
 QUdpSocket *socket;
+QDomDocument document;
+
+static int START_THRESH = 3;
 
 stream::stream()
 {
-    bg_detect = new background_detect();
     detect = new detectobject();
-    imgthread = new imgThread();
     this_stream = this;
     socket = new QUdpSocket(this);
     QHostAddress *addr = new QHostAddress("127.0.0.1");
     socket->connectToHost(*addr, 8888);
+
+    QFile file("/nvdata/tftpboot/settings.xml");
+    if(!file.open(QIODevice::ReadOnly | QIODevice::Text)){
+        qDebug() << "Could not open file";
+
+    }
+    else{
+        if(!document.setContent(&file)){
+            qDebug() << "Could not read file";
+
+        }
+        file.close();
+    }
 }
 
 
-//gst-launch-0.10 mfw_v4lsrc num-buffers=1 ! videoscale ! capsfilter caps=video/x-raw-yuv,width=640,height=480 ! ffmpegcolorspace ! capsfilter caps=video/x-raw-rgb ! ffmpegcolorspace ! vpuenc codec=12 ! filesink location=/nvdata/tftpboot/cap.jpg
+//gst-launch-0.10 mfw_v4lsrc capture-mode=1 ! videoscale ! video/x-raw-yuv,width=320,height=240 ! ffmpegcolorspace ! video/x-raw-rgb ! ffmpegcolorspace ! appsink
 
 bool stream::buildpipeline()
 {
@@ -70,7 +79,6 @@ bool stream::buildpipeline()
     rgb_conv = gst_element_factory_make("ffmpegcolorspace", NULL);
     appsink = gst_element_factory_make("appsink", NULL);
 
-
     //confirm elements created
     if(!src || !scale || !yuvfilter || !yuv_conv || !rgbfilter || !rgb_conv || !appsink){
         g_printerr("could not create all input elements\n");
@@ -79,19 +87,33 @@ bool stream::buildpipeline()
         return false;
     }
 
+    QDomElement root = document.firstChildElement();
+    QString str = detect->getvalues(root, "param",  "Name", "size");
+
 #ifdef IMX6
-    g_object_set(src, "capture-mode", 1, NULL);
+
+    if(str == (QString)"large"){
+        g_object_set(src, "capture-mode", 0 , NULL);
+    }else{
+        g_object_set(src, "capture-mode", 1, NULL);
+    }
+
 #endif
 
+    if(str == (QString)"large"){
+        gst_util_set_object_arg(G_OBJECT(yuvfilter), "caps",
+                                "video/x-raw-yuv,width=640,height=480");
+    }else{
+        gst_util_set_object_arg(G_OBJECT(yuvfilter), "caps",
+                                "video/x-raw-yuv,width=320,height=240");
+    }
+
     //set filter caps
-    gst_util_set_object_arg(G_OBJECT(yuvfilter), "caps",
-                            "video/x-raw-yuv,width=320,height=240");
     gst_util_set_object_arg(G_OBJECT(rgbfilter), "caps",
                             "video/x-raw-rgb");
 
     //add elements to pipelines
     gst_bin_add_many(GST_BIN(input_pipe), src, scale, yuvfilter, yuv_conv, rgbfilter, rgb_conv, appsink, NULL);
-
 
     //link elements
     if(!gst_element_link_many(src, scale, yuvfilter, yuv_conv, rgbfilter, rgb_conv, appsink, NULL)){
@@ -119,11 +141,12 @@ bool stream::buildpipeline()
 
 void stream::startstream()
 {
+    //set pipeline to playing
     gst_element_set_state(input_pipe, GST_STATE_PLAYING);
-
-    imgthread->run();
+    //enter main loop
     g_main_loop_run(loop);
 
+    //once exited set pipeline to null and unref
     qDebug() << "unreffing";
     gst_element_set_state(input_pipe, GST_STATE_NULL);
     gst_object_unref(input_pipe);
@@ -168,7 +191,7 @@ GstFlowReturn new_preroll(GstAppSink *asink, gpointer user_data)
     Q_UNUSED(asink);
     Q_UNUSED(user_data);
     g_print("got preroll\n");
-    compareImg = false;
+    compareImg = true;
     return GST_FLOW_OK;
 }
 
@@ -179,31 +202,21 @@ GstFlowReturn new_buffer(GstAppSink *asink, gpointer data)
     GstBuffer *buffer;
 
     //discard initial buffers
-    if(fcount < 10){
+    if(fcount < START_THRESH){
         return GST_FLOW_OK;
     }
 
-    if(fcount == 10){
-        //grab available buffer
-        buffer =  gst_app_sink_pull_buffer(asink);
+    Size img_size;
+    QDomElement root = document.firstChildElement();
+    QString str = detect->getvalues(root, "param",  "Name", "size");
 
-        //convert GstBuffer to Mat
-        Mat frame(Size(320,240), CV_8UC3, (char*)GST_BUFFER_DATA(buffer), Mat::AUTO_STEP);
-
-        Mat frame2;
-        //gstreamer buffer is rgb, opencv wants bgr.
-        cvtColor(frame, frame2,CV_RGB2BGR);
-
-        ref = frame2;
-
-        gst_buffer_unref(buffer);
-
-        compareImg = true;
-
-        return GST_FLOW_OK;
+    if(str == (QString)"large"){
+        img_size = Size(640,480);
+    }else{
+        img_size = Size(320,240);
     }
 
-    else if(compareImg == true){        
+    if(compareImg == true){
         compareImg = false;
         gst_app_sink_set_emit_signals((GstAppSink*)appsink, false);
         QTime t;
@@ -212,24 +225,20 @@ GstFlowReturn new_buffer(GstAppSink *asink, gpointer data)
         buffer =  gst_app_sink_pull_buffer(asink);
 
         //convert GstBuffer to Mat
-        Mat frame(Size(320,240), CV_8UC3, (char*)GST_BUFFER_DATA(buffer), Mat::AUTO_STEP);
+        Mat frame(img_size, CV_8UC3, (char*)GST_BUFFER_DATA(buffer), Mat::AUTO_STEP);
 
         Mat frame2;
         //gstreamer buffer is rgb, opencv wants bgr.
         cvtColor(frame, frame2,CV_RGB2BGR);
 
-        double comparison = imgthread->compareImages(ref,frame2);
-
-        if(comparison < 1.0f){
-            Mat face = detect->findFace(frame2);
-            if(!face.empty()){
-                qDebug() << "***Person Detected***";
-                this_stream->sendPanelMessage();
-                compareImg = false;
-                g_main_loop_quit(loop);
-                return GST_FLOW_OK;
-            }
-        }        
+        Mat face = detect->findFace(frame2);
+        if(!face.empty()){
+            qDebug() << "***Person Detected***";
+            this_stream->sendPanelMessage();
+            compareImg = false;
+            g_main_loop_quit(loop);
+            return GST_FLOW_OK;
+        }
 
         cout << "time elapsed: " << t.elapsed() << " ms" << endl;
 
@@ -239,7 +248,6 @@ GstFlowReturn new_buffer(GstAppSink *asink, gpointer data)
 
         gst_app_sink_set_emit_signals((GstAppSink*)appsink, true);
     }
-
     return GST_FLOW_OK;
 }
 
@@ -247,30 +255,8 @@ gboolean timeout_cb(gpointer user_data)
 {
     Q_UNUSED(user_data);
     g_print("timeout\n");
-
     compareImg = !compareImg;
     return true;
-}
-
-
-imgThread::imgThread()
-{
-
-}
-
-void imgThread::run()
-{
-    qDebug() << "thread running";
-
-}
-
-double imgThread::compareImages(Mat& ref, Mat& comp)
-{
-    Mat new_ref, new_comp;
-    ref.copyTo(new_ref);
-    comp.copyTo(new_comp);
-    double comparison =  bg_detect->compareImages(new_ref, new_comp);
-    return comparison;
 }
 
 void stream::sendPanelMessage()
